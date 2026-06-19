@@ -8,8 +8,8 @@ calendar:
   #   named_folder   : the calendar appears by NAME under your "Other Calendars"
   #                    / store folders. Set `folder_name` to its display name.
   method: shared_mailbox
-  owner: "Team PTO <team-pto@example.com>"   # used when method = shared_mailbox
-  folder_name: "Team PTO"                     # used when method = named_folder
+  owner: "ISC Analytics CoE BD"        # display name; if Resolve fails, use the SMTP address
+  folder_name: "ISC Analytics CoE BD"  # fallback for method = named_folder
 
 # ── PTO detection rules ──────────────────────────────────────────────────
 # On a shared calendar the main job is "who does this event belong to?" and

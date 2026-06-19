@@ -48,6 +48,25 @@ def test_half_day_timed():
     assert entries[0].days == 0.5
 
 
+def test_overnight_timed_counts_one_day():
+    # The real "Sally - PTO" event: timed, crosses midnight (17:00 -> 05:00).
+    # Should be 1 day, not 2 (the artifact double-count bug).
+    p = make_parser()
+    e = ev("Sally - PTO", datetime(2026, 6, 18, 17, 0), datetime(2026, 6, 19, 5, 0))
+    entries, _ = p.parse([e])
+    assert len(entries) == 1
+    assert entries[0].person == "Sally"
+    assert entries[0].days == 1.0
+
+
+def test_multiday_timed_range_counts_each_day():
+    # A genuine timed multi-day range (> 24h): Mon 09:00 -> Wed 17:00.
+    p = make_parser()
+    e = ev("John - Vacation", datetime(2026, 6, 22, 9, 0), datetime(2026, 6, 24, 17, 0))
+    entries, _ = p.parse([e])
+    assert entries[0].days == 3.0  # Mon, Tue, Wed
+
+
 def test_out_of_office_without_keyword():
     p = make_parser()
     e = ev("Dentist", datetime(2026, 6, 22, 0, 0), datetime(2026, 6, 23, 0, 0),

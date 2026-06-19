@@ -8,7 +8,8 @@ Then count business days, honoring weekends, company holidays, and half-days.
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timedelta
+from collections import defaultdict
+from datetime import date, datetime, time, timedelta
 
 from .models import PtoEntry, RawEvent
 
@@ -117,15 +118,32 @@ class PtoParser:
 
     # ── day counting ──────────────────────────────────────────────────────
     def _count_days(self, ev: RawEvent) -> float:
-        start_d = ev.start.date()
-        # All-day events end at midnight of the day AFTER the last day.
-        end_d = (ev.end - timedelta(seconds=1)).date()
+        """Business days of PTO, robust to how the event was entered.
 
-        if start_d == end_d:
-            if not ev.all_day and 0 < ev.duration_hours <= self.half_day_max_hours:
-                return 0.5 if self._is_workday(start_d) else 0.0
-            return 1.0 if self._is_workday(start_d) else 0.0
+        - All-day events: count business days midnight-to-midnight (exact).
+        - Timed events <= 24h (incl. overnight/timezone artifacts): a single
+          shift -> 1 day (0.5 if within the half-day threshold), attributed to
+          the business day holding most of its hours. Avoids double-counting an
+          event that merely straddles midnight.
+        - Timed events > 24h: a genuine multi-day range -> business days covered.
+        """
+        if ev.duration_hours <= 0:
+            d = ev.start.date()
+            return 1.0 if self._is_workday(d) else 0.0
 
+        if ev.all_day:
+            # All-day events end at midnight of the day AFTER the last day.
+            return self._business_days(ev.start.date(), (ev.end - timedelta(seconds=1)).date())
+
+        if ev.duration_hours <= 24:
+            day = self._majority_workday(ev)
+            if day is None:
+                return 0.0
+            return 0.5 if ev.duration_hours <= self.half_day_max_hours else 1.0
+
+        return self._business_days(ev.start.date(), (ev.end - timedelta(seconds=1)).date())
+
+    def _business_days(self, start_d: date, end_d: date) -> float:
         days = 0.0
         d = start_d
         while d <= end_d:
@@ -133,6 +151,21 @@ class PtoParser:
                 days += 1.0
             d += timedelta(days=1)
         return days
+
+    def _majority_workday(self, ev: RawEvent) -> date | None:
+        """The business day that holds the most of this event's hours.
+        Returns None if the event touches no business day."""
+        hours: dict[date, float] = defaultdict(float)
+        cur = ev.start
+        while cur < ev.end:
+            next_midnight = datetime.combine(cur.date() + timedelta(days=1), time.min)
+            seg_end = min(ev.end, next_midnight)
+            hours[cur.date()] += (seg_end - cur).total_seconds() / 3600.0
+            cur = seg_end
+        workdays = {d: h for d, h in hours.items() if self._is_workday(d)}
+        if not workdays:
+            return None
+        return max(workdays, key=workdays.get)
 
     def _is_workday(self, d: date) -> bool:
         if self.skip_weekends and d.weekday() >= 5:  # 5 Sat, 6 Sun
