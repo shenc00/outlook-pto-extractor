@@ -8,22 +8,28 @@ echo ==========================================
 echo.
 
 REM --- 1. Locate a Python 3.11+ interpreter (skips the Microsoft Store stub) ---
-set "PYEXE="
-
-call :try_python "py -3"
+call :detect_python
 if defined PYEXE goto have_python
 
-for /d %%D in ("%LOCALAPPDATA%\Programs\Python\Python3*") do (
-  call :try_python "%%D\python.exe"
-  if defined PYEXE goto have_python
+REM --- 1b. None found: auto-install via winget (user scope, silent) ---
+echo [..] No Python 3.11+ found. Attempting automatic install via winget ...
+where winget >nul 2>&1
+if errorlevel 1 (
+  echo [ERROR] winget is not available, so Python cannot be auto-installed.
+  echo         Install Python 3.11+ from https://www.python.org/downloads/
+  echo         ^(tick "Add python.exe to PATH"^), then re-run this script.
+  echo.
+  pause
+  exit /b 1
 )
-
-call :try_python "python"
+winget install --id Python.Python.3.12 --scope user --silent --accept-source-agreements --accept-package-agreements
+echo [..] Re-checking for Python ...
+call :detect_python
 if defined PYEXE goto have_python
 
-echo [ERROR] Could not find Python 3.11 or newer.
-echo         Install it from https://www.python.org/downloads/
-echo         (tick "Add python.exe to PATH"), then re-run this script.
+echo [ERROR] Python still not found after the install attempt.
+echo         Open a NEW terminal and run setup.bat again, or install
+echo         manually from https://www.python.org/downloads/
 echo.
 pause
 exit /b 1
@@ -74,6 +80,18 @@ echo        python scripts\spike_read_calendar.py --start 2026-06-01 --end 2026-
 echo.
 pause
 exit /b 0
+
+REM --- helper: find a Python 3.11+ interpreter, set PYEXE ---
+:detect_python
+set "PYEXE="
+call :try_python "py -3"
+if defined PYEXE goto :eof
+for /d %%D in ("%LOCALAPPDATA%\Programs\Python\Python3*") do (
+  call :try_python "%%D\python.exe"
+  if defined PYEXE goto :eof
+)
+call :try_python "python"
+goto :eof
 
 REM --- helper: set PYEXE if %~1 is a working Python 3.11+ interpreter ---
 :try_python
