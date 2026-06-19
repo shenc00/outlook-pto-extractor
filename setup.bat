@@ -27,9 +27,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\install_python
 call :detect_python
 if defined PYEXE goto have_python
 
-echo [ERROR] Automatic Python install failed.
-echo         Check internet/proxy access, or install manually from
-echo         https://www.python.org/downloads/ then re-run setup.bat.
+REM --- 1d. Portable Python (no MSI; works when installers are policy-blocked) ---
+echo [..] Installer blocked or failed; trying portable Python (no install) ...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\install_python_portable.ps1"
+call :detect_python
+if defined PYEXE goto have_python
+
+echo [ERROR] Automatic Python install failed (likely locked down by IT policy).
+echo         Ask IT to install Python 3.11+ (e.g. via Company Portal / Software
+echo         Center), or install manually from https://www.python.org/downloads/
+echo         then re-run setup.bat.
 echo.
 pause
 exit /b 1
