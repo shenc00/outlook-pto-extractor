@@ -1,0 +1,7 @@
+# Batch files must use CRLF or cmd.exe can mishandle labels/goto.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Keep shell/python scripts LF.
+*.py  text eol=lf
+*.sh  text eol=lf
