@@ -26,18 +26,23 @@ def build_connector(cfg: dict):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Extract team PTO from a shared Outlook calendar.")
-    ap.add_argument("--start", required=True, type=_parse_date, help="YYYY-MM-DD")
-    ap.add_argument("--end", required=True, type=_parse_date, help="YYYY-MM-DD")
+    ap.add_argument("--start", type=_parse_date, help="YYYY-MM-DD (default: Jan 1 this year)")
+    ap.add_argument("--end", type=_parse_date, help="YYYY-MM-DD (default: Dec 31 this year)")
     ap.add_argument("--out", default=None, help="output .xlsx path (overrides config)")
     ap.add_argument("--config", default=None, help="path to config.yaml")
     ap.add_argument("--dry-run", action="store_true",
                     help="print parsed PTO and skipped events; write nothing")
     args = ap.parse_args(argv)
 
+    # Default to the current calendar year so scheduled runs need no date args.
+    today = datetime.now()
+    start = args.start or datetime(today.year, 1, 1)
+    end = args.end or datetime(today.year, 12, 31)
+
     cfg = load_config(args.config)
 
     connector = build_connector(cfg)
-    events = connector.get_events(args.start, args.end)
+    events = connector.get_events(start, end)
     print(f"Read {len(events)} raw event(s) from the shared calendar.")
 
     parser = PtoParser(cfg)
@@ -49,7 +54,7 @@ def main(argv=None) -> int:
         return 0
 
     out_path = args.out or cfg.get("output", {}).get("path", "pto_report.xlsx")
-    write_report(entries, out_path, args.start, args.end)
+    write_report(entries, out_path, start, end)
     print(f"Wrote report: {out_path}")
     return 0
 

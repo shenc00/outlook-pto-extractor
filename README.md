@@ -100,13 +100,67 @@ the shared team calendar must be added to your Outlook (under *Other Calendars*)
    python -m src.main --start 2026-06-01 --end 2026-12-31 --out pto_report.xlsx
    ```
 
+## Automated daily refresh on a VM (COM + OneDrive sync)
+
+Run the report every weekday morning on a VM and publish it to SharePoint —
+without any Azure app registration. The script writes the workbook into a
+**OneDrive-synced copy of the SharePoint folder**, and the sync client uploads
+it. Outlook COM needs a live desktop session, so the task runs **interactively**
+and the VM uses **auto-logon**.
+
+Target SharePoint location:
+*GSC Transformation* → **Shared Documents** → `General / DOMAINS & PROJECTS / DELIVER Domain`.
+
+### One-time VM setup
+
+1. **Base install**: copy/clone this repo to the VM, run `setup.bat`, sign in to
+   the **Outlook desktop app**, and add the shared **ISC Analytics CoE BD**
+   calendar (see [Setup](#setup)).
+2. **Auto-logon**: configure the VM to log the service user on automatically at
+   boot (so an interactive session always exists for Outlook). Don't *sign out*
+   after — locking the screen is fine; signing out kills the session.
+3. **Sync the SharePoint folder**: open the SharePoint library in a browser,
+   navigate to the **DELIVER Domain** folder, and click **Sync** (or *Add
+   shortcut to OneDrive*). It now appears locally under your OneDrive, e.g.
+   `C:\Users\<vmuser>\OneDrive - BD\...\DELIVER Domain`. Note that full path.
+4. **Point output at the synced folder** — create `config.local.yaml` (gitignored)
+   next to `config.yaml`:
+   ```yaml
+   output:
+     path: "C:/Users/<vmuser>/OneDrive - BD/.../DELIVER Domain/pto_report.xlsx"
+   ```
+5. **Register the scheduled task** (elevated PowerShell, once):
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts\register_scheduled_task.ps1 -At 06:00
+   ```
+   This creates *“PTO Report Daily Refresh”* running **Mon–Fri at 06:00** in the
+   interactive session.
+
+### Verify
+
+```powershell
+Start-ScheduledTask -TaskName "PTO Report Daily Refresh"
+# then check the newest log:
+Get-ChildItem logs | Sort-Object LastWriteTime | Select-Object -Last 1 | Get-Content
+```
+Confirm `pto_report.xlsx` appears in the synced folder and turns green (synced)
+in File Explorer / shows up in SharePoint.
+
+The scheduled command needs no dates — it defaults to the **current calendar
+year** (Jan 1 – Dec 31). Logs are written to `logs\refresh_<timestamp>.log`.
+
+> **Why interactive + auto-logon?** Outlook COM cannot run in Windows session 0
+> ("run whether the user is logged on or not"). The task must run in the live
+> desktop session, which is why auto-logon is required.
+
 ## Status / milestones
 
 - [ ] M1 Spike — read shared calendar, dump raw events
 - [ ] M2 Parser — extract person + PTO days, dry-run dump
 - [x] M3 Excel — one calendar tab per month (Mon..Sun grid, names per day)
 - [ ] M4 Config/CLI polish for full team
-- [ ] M5 (optional) Graph connector for scheduled/unattended runs
+- [x] M5 Scheduled daily refresh on a VM (COM + OneDrive sync to SharePoint)
+- [ ] M6 (optional) Graph connector for fully unattended (no interactive session)
 
 See `PLAN.md` notes inline in code for the open decisions (subject-line format,
 half-days, holidays).

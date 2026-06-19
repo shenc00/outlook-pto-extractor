@@ -4,5 +4,6 @@ __pycache__/
 *.xlsx
 !sample_*.xlsx
 config.local.yaml
+logs/
 .idea/
 .vscode/
