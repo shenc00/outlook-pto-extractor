@@ -65,8 +65,9 @@ A colon works in place of the dash too (`Sally: PTO`).
 ## Setup
 
 **One-click:** double-click **`setup.bat`** (or run it from a terminal). It
-finds Python 3.11+ (auto-installing it via winget if none is present), creates
-`.venv`, and installs all dependencies. Then activate the venv for your session:
+finds Python 3.11+ (auto-installing it via winget, or a direct python.org
+download if winget is unavailable), creates `.venv`, and installs all
+dependencies. Then activate the venv for your session:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1

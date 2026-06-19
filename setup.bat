@@ -11,25 +11,25 @@ REM --- 1. Locate a Python 3.11+ interpreter (skips the Microsoft Store stub) --
 call :detect_python
 if defined PYEXE goto have_python
 
-REM --- 1b. None found: auto-install via winget (user scope, silent) ---
-echo [..] No Python 3.11+ found. Attempting automatic install via winget ...
+REM --- 1b. None found: auto-install. Try winget first (fast if present) ---
+echo [..] No Python 3.11+ found. Attempting automatic install ...
 where winget >nul 2>&1
-if errorlevel 1 (
-  echo [ERROR] winget is not available, so Python cannot be auto-installed.
-  echo         Install Python 3.11+ from https://www.python.org/downloads/
-  echo         ^(tick "Add python.exe to PATH"^), then re-run this script.
-  echo.
-  pause
-  exit /b 1
+if not errorlevel 1 (
+  echo [..] Installing Python via winget ...
+  winget install --id Python.Python.3.12 --scope user --silent --accept-source-agreements --accept-package-agreements
+  call :detect_python
 )
-winget install --id Python.Python.3.12 --scope user --silent --accept-source-agreements --accept-package-agreements
-echo [..] Re-checking for Python ...
+if defined PYEXE goto have_python
+
+REM --- 1c. Fall back to the official python.org installer (no winget needed) ---
+echo [..] winget unavailable or unsuccessful; downloading from python.org ...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\install_python.ps1"
 call :detect_python
 if defined PYEXE goto have_python
 
-echo [ERROR] Python still not found after the install attempt.
-echo         Open a NEW terminal and run setup.bat again, or install
-echo         manually from https://www.python.org/downloads/
+echo [ERROR] Automatic Python install failed.
+echo         Check internet/proxy access, or install manually from
+echo         https://www.python.org/downloads/ then re-run setup.bat.
 echo.
 pause
 exit /b 1
