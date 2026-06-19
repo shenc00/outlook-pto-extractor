@@ -1,0 +1,8 @@
+pywin32>=306          # Outlook COM automation (Windows only)
+openpyxl>=3.1         # Excel .xlsx writing
+PyYAML>=6.0           # config.yaml
+python-dateutil>=2.8  # date math / business-day counting
+
+# Optional — only needed for the future Microsoft Graph connector:
+# msal>=1.28
+# requests>=2.31

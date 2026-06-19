@@ -1,0 +1,59 @@
+# ── Shared team calendar ─────────────────────────────────────────────────
+# How to locate the ONE shared calendar to read.
+calendar:
+  # Method to open the shared calendar via Outlook COM. One of:
+  #   shared_mailbox : the calendar belongs to a shared mailbox / person.
+  #                    Set `owner` to that mailbox's name or SMTP address;
+  #                    we resolve it and open its default Calendar folder.
+  #   named_folder   : the calendar appears by NAME under your "Other Calendars"
+  #                    / store folders. Set `folder_name` to its display name.
+  method: shared_mailbox
+  owner: "Team PTO <team-pto@example.com>"   # used when method = shared_mailbox
+  folder_name: "Team PTO"                     # used when method = named_folder
+
+# ── PTO detection rules ──────────────────────────────────────────────────
+# On a shared calendar the main job is "who does this event belong to?" and
+# "is this actually PTO?". Tune these against real data using --dry-run.
+pto:
+  # An event counts as PTO if ANY of these match (after name extraction).
+  # Categories assigned to the appointment (case-insensitive).
+  categories: ["PTO", "Vacation", "Holiday", "Leave", "OOO"]
+  # OR the subject matches one of these regexes (case-insensitive).
+  subject_patterns:
+    - "\\bPTO\\b"
+    - "\\bOOO\\b"
+    - "\\bvacation\\b"
+    - "\\bout of office\\b"
+    - "\\bannual leave\\b"
+  # OR the appointment's BusyStatus is Out-of-Office (olOutOfOffice = 3).
+  match_out_of_office: true
+
+# ── Person / name extraction ─────────────────────────────────────────────
+# Everyone's PTO is on one calendar, so we must recover WHO each event is for.
+person:
+  # Tried in order until one yields a name:
+  #   subject_regex : capture group named `name` from the subject.
+  #   organizer     : use the appointment organizer's display name.
+  # Default subject_regex handles "Sally - PTO", "Sally: Vacation", "Sally OOO".
+  strategy: ["subject_regex", "organizer"]
+  subject_regex: "^(?P<name>[A-Za-z][A-Za-z.'\\- ]+?)\\s*[-:]?\\s*(PTO|OOO|vacation|leave|out of office|holiday)"
+
+  # Optional roster: only keep these people, and canonicalize aliases ->
+  # display name. Leave empty to keep everyone found.
+  roster: {}
+    # "Sally Shen": ["Sally", "Sally S", "sshen"]
+    # "John Smith": ["John", "John S"]
+
+# ── Day counting ─────────────────────────────────────────────────────────
+counting:
+  skip_weekends: true
+  # Company holidays excluded from PTO day totals (YYYY-MM-DD).
+  company_holidays: []
+    # - 2026-07-03
+    # - 2026-12-25
+  # Treat a single-day timed event shorter than this many hours as a half day.
+  half_day_max_hours: 5
+
+# ── Output ───────────────────────────────────────────────────────────────
+output:
+  path: "pto_report.xlsx"
