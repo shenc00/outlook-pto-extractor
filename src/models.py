@@ -6,7 +6,7 @@ PtoEntry  : a normalized PTO record after parsing (person + day count).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 
 
 @dataclass
@@ -32,7 +32,9 @@ class PtoEntry:
     person: str
     start: datetime
     end: datetime
-    days: float          # business days in range (half-days allowed)
+    days: float                              # business days in range (half-days allowed)
+    dates: list[date] = field(default_factory=list)  # the business days occupied
+    tentative: bool = False                  # busy status was Tentative
     pto_type: str = "PTO"
     note: str = ""
     source_subject: str = ""

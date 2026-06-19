@@ -14,7 +14,7 @@ connector/  ──► outlook_com.py   reads ONE shared team calendar via COM
    ▼  RawEvent records
 pto_parser.py   figure out WHO each event belongs to + how many PTO days
    ▼  PtoEntry records
-excel_writer.py  ──►  pto_report.xlsx  (Summary + Detail sheets)
+excel_writer.py  ──►  pto_report.xlsx  (one calendar tab per month)
 ```
 
 The connector is swappable behind the `CalendarConnector` interface, so the
@@ -62,7 +62,7 @@ the shared team calendar must be added to your Outlook (under *Other Calendars*)
 
 - [ ] M1 Spike — read shared calendar, dump raw events
 - [ ] M2 Parser — extract person + PTO days, dry-run dump
-- [ ] M3 Excel — Summary + Detail sheets
+- [x] M3 Excel — one calendar tab per month (Mon..Sun grid, names per day)
 - [ ] M4 Config/CLI polish for full team
 - [ ] M5 (optional) Graph connector for scheduled/unattended runs
 

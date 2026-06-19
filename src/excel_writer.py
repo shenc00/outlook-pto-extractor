@@ -1,19 +1,37 @@
-"""Write PtoEntry records to a formatted .xlsx with Summary + Detail sheets."""
+"""Write PtoEntry records to a month-per-tab calendar workbook.
+
+One sheet per month in the date range (June, July, ...). Each sheet is a
+Mon..Sun calendar grid: for every week, a date-label row followed by a names
+row listing everyone on PTO that day (one name per line). Days outside the
+sheet's month are shown greyed. A 'Notes' row sits at the bottom.
+"""
 from __future__ import annotations
 
+import calendar as _calendar
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime
 
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from .models import PtoEntry
 
+WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
 HEADER_FILL = PatternFill("solid", fgColor="305496")
 HEADER_FONT = Font(bold=True, color="FFFFFF")
-TOTAL_FONT = Font(bold=True)
-DATE_FMT = "yyyy-mm-dd"
+DATE_FILL = PatternFill("solid", fgColor="DDEBF7")
+DATE_FONT = Font(bold=True, color="1F1F1F")
+SPILL_FONT = Font(bold=True, color="A6A6A6")   # greyed out-of-month dates
+NAME_FONT = Font(color="1F1F1F")
+WEEKEND_FILL = PatternFill("solid", fgColor="F2F2F2")
+_THIN = Side(style="thin", color="BFBFBF")
+BORDER = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
+
+COL_WIDTH = 18
+LINE_HEIGHT = 15
+MIN_NAME_ROW_HEIGHT = 72
 
 
 def write_report(
@@ -22,78 +40,84 @@ def write_report(
     start: datetime,
     end: datetime,
 ) -> str:
+    by_date = _index_by_date(entries)
+    multi_year = start.year != end.year
+
     wb = Workbook()
-    _write_summary(wb.active, entries, start, end)
-    _write_detail(wb.create_sheet("Detail"), entries)
+    wb.remove(wb.active)
+    for year, month in _months_in_range(start, end):
+        title = f"{_calendar.month_name[month]} {year}" if multi_year else _calendar.month_name[month]
+        _write_month(wb.create_sheet(title[:31]), year, month, by_date)
+    if not wb.sheetnames:
+        wb.create_sheet("No PTO")
     wb.save(out_path)
     return out_path
 
 
-def _write_summary(ws, entries: list[PtoEntry], start, end):
-    ws.title = "Summary"
-    ws["A1"] = "Team PTO Summary"
-    ws["A1"].font = Font(bold=True, size=14)
-    ws["A2"] = f"Range: {start:%Y-%m-%d} to {end:%Y-%m-%d}"
-    ws["A3"] = f"Generated: {datetime.now():%Y-%m-%d %H:%M}"
-
-    headers = ["Person", "Total PTO days", "# Entries"]
-    row0 = 5
-    _write_headers(ws, headers, row0)
-
-    totals: dict[str, float] = defaultdict(float)
-    counts: dict[str, int] = defaultdict(int)
+def _index_by_date(entries: list[PtoEntry]) -> dict[date, list[tuple[str, bool]]]:
+    """date -> sorted list of (person, tentative)."""
+    out: dict[date, list[tuple[str, bool]]] = defaultdict(list)
     for e in entries:
-        totals[e.person] += e.days
-        counts[e.person] += 1
-
-    r = row0 + 1
-    for person in sorted(totals):
-        ws.cell(r, 1, person)
-        ws.cell(r, 2, round(totals[person], 1))
-        ws.cell(r, 3, counts[person])
-        r += 1
-
-    ws.cell(r, 1, "TOTAL").font = TOTAL_FONT
-    c = ws.cell(r, 2, round(sum(totals.values()), 1)); c.font = TOTAL_FONT
-    c = ws.cell(r, 3, sum(counts.values())); c.font = TOTAL_FONT
-
-    _finish(ws, headers, row0, freeze=f"A{row0 + 1}")
+        for d in e.dates:
+            out[d].append((e.person, e.tentative))
+    for d in out:
+        out[d].sort(key=lambda t: t[0].lower())
+    return out
 
 
-def _write_detail(ws, entries: list[PtoEntry]):
-    headers = ["Person", "Start", "End", "Days", "Type", "Note"]
-    row0 = 1
-    _write_headers(ws, headers, row0)
+def _write_month(ws, year: int, month: int, by_date: dict) -> None:
+    for c in range(1, 8):
+        ws.column_dimensions[get_column_letter(c)].width = COL_WIDTH
 
-    r = row0 + 1
-    for e in sorted(entries, key=lambda x: (x.person, x.start)):
-        ws.cell(r, 1, e.person)
-        cs = ws.cell(r, 2, e.start); cs.number_format = DATE_FMT
-        ce = ws.cell(r, 3, e.end);   ce.number_format = DATE_FMT
-        ws.cell(r, 4, round(e.days, 1))
-        ws.cell(r, 5, e.pto_type)
-        ws.cell(r, 6, e.note)
-        r += 1
+    # Weekday header row.
+    for c, wd in enumerate(WEEKDAYS, start=1):
+        cell = ws.cell(1, c, wd)
+        cell.fill = HEADER_FILL
+        cell.font = HEADER_FONT
+        cell.alignment = Alignment(horizontal="center")
+        cell.border = BORDER
+    ws.freeze_panes = "A2"
 
-    _finish(ws, headers, row0, freeze=f"A{row0 + 1}")
+    weeks = _calendar.Calendar(firstweekday=0).monthdatescalendar(year, month)
+    row = 2
+    for week in weeks:
+        max_names = 1
+        for c, d in enumerate(week, start=1):
+            in_month = d.month == month
+            weekend = d.weekday() >= 5
+
+            # date-label cell
+            lab = ws.cell(row, c, d.strftime("%d-%b"))
+            lab.font = DATE_FONT if in_month else SPILL_FONT
+            lab.fill = DATE_FILL
+            lab.alignment = Alignment(horizontal="left")
+            lab.border = BORDER
+
+            # names cell (only for days belonging to this month)
+            names = []
+            if in_month:
+                names = [f"{p}(tentative)" if tentative else p
+                         for p, tentative in by_date.get(d, [])]
+            nm = ws.cell(row + 1, c, "\n".join(names))
+            nm.font = NAME_FONT
+            nm.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
+            nm.border = BORDER
+            if weekend:
+                nm.fill = WEEKEND_FILL
+            max_names = max(max_names, len(names))
+
+        ws.row_dimensions[row + 1].height = max(MIN_NAME_ROW_HEIGHT, LINE_HEIGHT * max_names + 6)
+        row += 2
+
+    ws.cell(row + 1, 1, "Notes").font = Font(bold=True)
+    ws.sheet_view.showGridLines = False
 
 
-# ── shared formatting helpers ─────────────────────────────────────────────
-def _write_headers(ws, headers, row):
-    for col, name in enumerate(headers, start=1):
-        c = ws.cell(row, col, name)
-        c.fill = HEADER_FILL
-        c.font = HEADER_FONT
-        c.alignment = Alignment(horizontal="center")
-
-
-def _finish(ws, headers, header_row, freeze):
-    ws.freeze_panes = freeze
-    ws.auto_filter.ref = f"A{header_row}:{get_column_letter(len(headers))}{header_row}"
-    for col in range(1, len(headers) + 1):
-        letter = get_column_letter(col)
-        width = max(
-            (len(str(c.value)) for c in ws[letter] if c.value is not None),
-            default=10,
-        )
-        ws.column_dimensions[letter].width = min(max(width + 2, 12), 45)
+def _months_in_range(start: datetime, end: datetime):
+    y, m = start.year, start.month
+    while (y, m) <= (end.year, end.month):
+        yield y, m
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1

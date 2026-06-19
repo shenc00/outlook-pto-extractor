@@ -14,6 +14,7 @@ from datetime import date, datetime, time, timedelta
 from .models import PtoEntry, RawEvent
 
 OL_OUT_OF_OFFICE = 3
+OL_TENTATIVE = 1
 
 
 class PtoParser:
@@ -52,12 +53,15 @@ class PtoParser:
             if not person:
                 skipped.append(ev)
                 continue
+            dates = self._occupied_dates(ev)
             entries.append(
                 PtoEntry(
                     person=person,
                     start=ev.start,
                     end=ev.end,
-                    days=self._count_days(ev),
+                    days=self._days_from(ev, dates),
+                    dates=dates,
+                    tentative=(ev.busy_status == OL_TENTATIVE),
                     pto_type=self._classify_type(ev),
                     note=ev.subject,
                     source_subject=ev.subject,
@@ -117,40 +121,46 @@ class PtoParser:
         return out
 
     # ── day counting ──────────────────────────────────────────────────────
-    def _count_days(self, ev: RawEvent) -> float:
-        """Business days of PTO, robust to how the event was entered.
+    def _occupied_dates(self, ev: RawEvent) -> list[date]:
+        """The business days this PTO occupies, robust to how it was entered.
 
-        - All-day events: count business days midnight-to-midnight (exact).
+        - All-day events: every business day midnight-to-midnight (exact).
         - Timed events <= 24h (incl. overnight/timezone artifacts): a single
-          shift -> 1 day (0.5 if within the half-day threshold), attributed to
-          the business day holding most of its hours. Avoids double-counting an
-          event that merely straddles midnight.
+          shift -> the business day holding most of its hours. Avoids counting
+          an event that merely straddles midnight as two days.
         - Timed events > 24h: a genuine multi-day range -> business days covered.
         """
         if ev.duration_hours <= 0:
             d = ev.start.date()
-            return 1.0 if self._is_workday(d) else 0.0
+            return [d] if self._is_workday(d) else []
 
         if ev.all_day:
             # All-day events end at midnight of the day AFTER the last day.
-            return self._business_days(ev.start.date(), (ev.end - timedelta(seconds=1)).date())
+            return self._business_day_list(ev.start.date(), (ev.end - timedelta(seconds=1)).date())
 
         if ev.duration_hours <= 24:
             day = self._majority_workday(ev)
-            if day is None:
-                return 0.0
-            return 0.5 if ev.duration_hours <= self.half_day_max_hours else 1.0
+            return [day] if day is not None else []
 
-        return self._business_days(ev.start.date(), (ev.end - timedelta(seconds=1)).date())
+        return self._business_day_list(ev.start.date(), (ev.end - timedelta(seconds=1)).date())
 
-    def _business_days(self, start_d: date, end_d: date) -> float:
-        days = 0.0
+    def _days_from(self, ev: RawEvent, dates: list[date]) -> float:
+        """Numeric day total for the occupied dates (allows a single half-day)."""
+        if not dates:
+            return 0.0
+        if (not ev.all_day and len(dates) == 1
+                and 0 < ev.duration_hours <= self.half_day_max_hours):
+            return 0.5
+        return float(len(dates))
+
+    def _business_day_list(self, start_d: date, end_d: date) -> list[date]:
+        out: list[date] = []
         d = start_d
         while d <= end_d:
             if self._is_workday(d):
-                days += 1.0
+                out.append(d)
             d += timedelta(days=1)
-        return days
+        return out
 
     def _majority_workday(self, ev: RawEvent) -> date | None:
         """The business day that holds the most of this event's hours.
